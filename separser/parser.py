@@ -133,6 +133,111 @@ def _extract_costs(soup: BeautifulSoup) -> dict:
     return {"common_charges": common_charges, "taxes": taxes, "tax_abatement": tax_abatement}
 
 
+def _extract_list_items(section: Tag) -> list[str]:
+    """Extract items from a ListItem_item__ section, merging sub-items as 'Item: sub'."""
+    results = []
+    for item in section.find_all(class_=re.compile(r"^ListItem_item_")):
+        sub = item.find(class_=re.compile(r"^ListItem_subItemTitle_"))
+        if sub:
+            sub_txt = sub.get_text(strip=True)
+            main_txt = item.get_text(strip=True).replace(sub_txt, "").strip()
+            results.append(f"{main_txt}: {sub_txt}" if main_txt else sub_txt)
+        else:
+            txt = item.get_text(strip=True)
+            if txt:
+                results.append(txt)
+    return results
+
+
+def _extract_feature_sections(soup: BeautifulSoup) -> dict:
+    policies: list[str] = []
+    home_features: list[str] = []
+    building_amenities: list[str] = []
+
+    # Policies lives in a ListOfLists_section_ without a data-testid
+    for section in soup.find_all(class_=re.compile(r"^ListOfLists_section_")):
+        header_el = section.find(class_=re.compile(r"^ListOfLists_header_"))
+        if not header_el:
+            continue
+        label = header_el.get_text(strip=True).lower()
+        items = _extract_list_items(section)
+        if "polic" in label:
+            policies = items
+        elif "home feature" in label:
+            home_features = items
+
+    # Home features and building amenities have reliable data-testid
+    hf = soup.find(attrs={"data-testid": "home-features-section"})
+    if hf:
+        home_features = _extract_list_items(hf)
+
+    ba = soup.find(attrs={"data-testid": "building-amenities-section"})
+    if ba:
+        building_amenities = _extract_list_items(ba)
+
+    return {"policies": policies, "home_features": home_features, "building_amenities": building_amenities}
+
+
+def _extract_building_info(soup: BeautifulSoup) -> dict:
+    building_type: str | None = None
+    building_units: int | None = None
+    building_stories: int | None = None
+    year_built: int | None = None
+
+    icons = soup.find(attrs={"data-testid": "building-description-icons"})
+    if icons:
+        txt = icons.get_text(strip=True)
+        m = re.search(r"([\d,]+)\s*units?", txt, re.I)
+        if m:
+            building_units = _int(m.group(1))
+        m = re.search(r"([\d,]+)\s*stor", txt, re.I)
+        if m:
+            building_stories = _int(m.group(1))
+        m = re.search(r"(\d{4})\s*built", txt, re.I)
+        if m:
+            year_built = int(m.group(1))
+
+    about = soup.find(attrs={"data-testid": "about-building-section"})
+    if about:
+        m = re.search(r"(condo|co-op|coop|rental|townhouse|multi.family)\s*building", about.get_text(strip=True), re.I)
+        if m:
+            building_type = m.group(0).strip()
+
+    return {
+        "building_type": building_type,
+        "building_units": building_units,
+        "building_stories": building_stories,
+        "year_built": year_built,
+    }
+
+
+def _extract_price_history(soup: BeautifulSoup) -> list:
+    from .models import PriceHistoryEntry
+    results = []
+    for wrapper in soup.find_all(class_=re.compile(r"^PriceHistoryTable_priceEventWrapper__")):
+        row = wrapper
+        for _ in range(5):
+            row = row.parent
+            if row and row.name == "tr":
+                break
+        if not row or row.name != "tr":
+            continue
+        cells = row.find_all(["td", "th"])
+        if len(cells) < 3:
+            continue
+        date_txt = cells[0].get_text(strip=True)
+        price_txt = cells[1].get_text(strip=True)
+        event_txt = cells[2].get_text(strip=True)
+        # strip tooltip text appended to event
+        event_clean = re.sub(r"This is the number.*$", "", event_txt, flags=re.I).strip() or None
+        results.append(PriceHistoryEntry(
+            date=date_txt,
+            price=_int(price_txt),
+            event=event_clean,
+        ))
+    return results
+
+
 def _extract_open_houses(soup: BeautifulSoup) -> list[str]:
     results = []
     for slot in _cls_all(soup, "OpenHouseCard_openHouseSlotDate__"):
@@ -162,6 +267,8 @@ def parse(html: str, url: str) -> ListingData:
     soup = BeautifulSoup(html, "html.parser")
     details = _extract_property_details(soup)
     costs = _extract_costs(soup)
+    features = _extract_feature_sections(soup)
+    building = _extract_building_info(soup)
     price = _extract_price(soup)
     agent, brokerage = _extract_agent(soup)
     neighborhood, borough = _extract_location(soup)
@@ -186,6 +293,14 @@ def parse(html: str, url: str) -> ListingData:
         common_charges=costs["common_charges"],
         taxes=costs["taxes"],
         tax_abatement=costs["tax_abatement"],
+        policies=features["policies"],
+        home_features=features["home_features"],
+        building_amenities=features["building_amenities"],
+        building_type=building["building_type"],
+        building_units=building["building_units"],
+        building_stories=building["building_stories"],
+        year_built=building["year_built"],
+        price_history=_extract_price_history(soup),
         open_house_dates=_extract_open_houses(soup),
         description=_extract_description(soup),
         scraped_at=datetime.now(timezone.utc),

@@ -4,6 +4,12 @@ from typing import Literal
 from pydantic import BaseModel
 
 
+class PriceHistoryEntry(BaseModel):
+    date: str
+    price: int | None
+    event: str | None
+
+
 class ListingData(BaseModel):
     url: str
     address: str
@@ -21,6 +27,14 @@ class ListingData(BaseModel):
     common_charges: int | None
     taxes: int | None
     tax_abatement: str | None
+    policies: list[str]
+    home_features: list[str]
+    building_amenities: list[str]
+    building_type: str | None
+    building_units: int | None
+    building_stories: int | None
+    year_built: int | None
+    price_history: list[PriceHistoryEntry]
     open_house_dates: list[str]
     description: str | None
     scraped_at: datetime
