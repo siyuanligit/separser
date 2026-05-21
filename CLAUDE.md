@@ -50,7 +50,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
   "mcpServers": {
     "separser": {
       "command": "uvx",
-      "args": ["separser"]
+      "args": ["--from", "git+https://github.com/siyuanligit/separser", "separser-mcp"]
     }
   }
 }

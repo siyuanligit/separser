@@ -18,7 +18,7 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json`:
   "mcpServers": {
     "separser": {
       "command": "uvx",
-      "args": ["separser"]
+      "args": ["--from", "git+https://github.com/siyuanligit/separser", "separser-mcp"]
     }
   }
 }
@@ -38,7 +38,7 @@ Ask Claude:
 ## Dev Setup (Windows)
 
 ```bash
-pip install -e ".[dev]"
+pip install -e .
 playwright install chromium
 ```
 
@@ -52,12 +52,12 @@ pytest
 
 ## Adding Test Fixtures
 
-Tests run offline against saved HTML. To add a fixture:
+Tests run offline against saved HTML. To add or update the fixture:
 
-1. Open the listing in a browser (logged out of StreetEasy)
-2. DevTools → right-click page → Save as... → Webpage, Complete
-3. Copy the `.html` file to `tests/fixtures/sale_listing.html` or `new_dev_listing.html`
-4. Run `pytest` — tests will use the fixture
+1. Open a listing in a browser (logged out of StreetEasy)
+2. DevTools → right-click page → Save as... → Webpage, HTML Only
+3. Save to `tests/fixtures/sale_listing.html`
+4. Run `pytest`
 
 ---
 
