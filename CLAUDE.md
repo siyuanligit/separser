@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Purpose
 
-StreetEasy listing parser — extracts structured property data from StreetEasy URLs for a buyer-side real estate agent, a buyer-side real estate salesperson in NYC. She pastes listing URLs into Claude Desktop (Mac); gets structured JSON her Claude agent reformats as needed.
+StreetEasy listing parser — extracts structured property data from StreetEasy URLs for a buyer-side real estate salesperson in NYC. She pastes listing URLs into Claude Desktop (Mac); gets structured JSON her Claude agent reformats as needed.
 
 **Output delivery:** JSON via MCP tool (`parse_listing`) in Claude Desktop. CLI (`--output json|table`) for dev/test on Windows.
 
