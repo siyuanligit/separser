@@ -198,9 +198,16 @@ def _extract_building_url(soup: BeautifulSoup) -> str | None:
 def _extract_nearby_transit(soup: BeautifulSoup) -> list[str]:
     results = []
     for el in soup.find_all(attrs={"data-testid": "station-info"}):
-        txt = el.get_text(strip=True)
-        if txt:
-            results.append(txt)
+        # Line badges are in child spans; station name is the trailing text node
+        badges = [s.get_text(strip=True) for s in el.find_all("span") if s.get_text(strip=True)]
+        line = "".join(badges)
+        # Get text after stripping badge text, then strip "at" prefix
+        full = el.get_text(strip=True)
+        station = re.sub(r"^" + re.escape(line) + r"\s*at\s*", "", full).strip()
+        if line and station:
+            results.append(f"{line} at {station}")
+        elif full:
+            results.append(full)
     return results
 
 
@@ -253,8 +260,9 @@ def _extract_price_history(soup: BeautifulSoup) -> list:
             continue
         date_txt = cells[0].get_text(strip=True)
         price_txt = cells[1].get_text(strip=True)
-        event_txt = cells[2].get_text(strip=True)
-        # strip tooltip text appended to event
+        # Join multiple <p> elements with " · " to avoid merged text
+        paras = [p.get_text(strip=True) for p in cells[2].find_all("p") if p.get_text(strip=True)]
+        event_txt = " · ".join(paras) if paras else cells[2].get_text(strip=True)
         event_clean = re.sub(r"This is the number.*$", "", event_txt, flags=re.I).strip() or None
         results.append(PriceHistoryEntry(
             date=date_txt,
