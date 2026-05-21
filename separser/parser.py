@@ -178,6 +178,32 @@ def _extract_feature_sections(soup: BeautifulSoup) -> dict:
     return {"policies": policies, "home_features": home_features, "building_amenities": building_amenities}
 
 
+def _extract_building_url(soup: BeautifulSoup) -> str | None:
+    about = soup.find(attrs={"data-testid": "about-building-section"})
+    if about:
+        for a in about.find_all("a", href=True):
+            href = a["href"]
+            # "Learn more about X" link goes directly to the building page
+            if re.match(r"^https?://streeteasy\.com/building/[^/?]+$", href):
+                return href
+    # fallback: derive from canonical URL by stripping unit segment
+    canonical = soup.find("link", rel="canonical")
+    if canonical and canonical.get("href"):
+        m = re.match(r"(https?://streeteasy\.com/building/[^/]+)/", canonical["href"])
+        if m:
+            return m.group(1)
+    return None
+
+
+def _extract_nearby_transit(soup: BeautifulSoup) -> list[str]:
+    results = []
+    for el in soup.find_all(attrs={"data-testid": "station-info"}):
+        txt = el.get_text(strip=True)
+        if txt:
+            results.append(txt)
+    return results
+
+
 def _extract_building_info(soup: BeautifulSoup) -> dict:
     building_type: str | None = None
     building_units: int | None = None
@@ -269,6 +295,8 @@ def parse(html: str, url: str) -> ListingData:
     costs = _extract_costs(soup)
     features = _extract_feature_sections(soup)
     building = _extract_building_info(soup)
+    building_url = _extract_building_url(soup)
+    nearby_transit = _extract_nearby_transit(soup)
     price = _extract_price(soup)
     agent, brokerage = _extract_agent(soup)
     neighborhood, borough = _extract_location(soup)
@@ -296,10 +324,12 @@ def parse(html: str, url: str) -> ListingData:
         policies=features["policies"],
         home_features=features["home_features"],
         building_amenities=features["building_amenities"],
+        building_url=building_url,
         building_type=building["building_type"],
         building_units=building["building_units"],
         building_stories=building["building_stories"],
         year_built=building["year_built"],
+        nearby_transit=nearby_transit,
         price_history=_extract_price_history(soup),
         open_house_dates=_extract_open_houses(soup),
         description=_extract_description(soup),

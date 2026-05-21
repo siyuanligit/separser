@@ -30,10 +30,12 @@ class ListingData(BaseModel):
     policies: list[str]
     home_features: list[str]
     building_amenities: list[str]
+    building_url: str | None
     building_type: str | None
     building_units: int | None
     building_stories: int | None
     year_built: int | None
+    nearby_transit: list[str]
     price_history: list[PriceHistoryEntry]
     open_house_dates: list[str]
     description: str | None
