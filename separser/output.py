@@ -17,8 +17,8 @@ def to_table(listing: ListingData) -> None:
     rows = [
         ("Type", listing.listing_type),
         ("Price", f"${listing.price:,}" if listing.price else "—"),
-        ("Beds", str(listing.beds) if listing.beds is not None else "—"),
-        ("Baths", str(listing.baths) if listing.baths is not None else "—"),
+        ("Beds", ("Studio" if listing.beds == 0 else str(int(listing.beds) if listing.beds == int(listing.beds) else listing.beds)) if listing.beds is not None else "—"),
+        ("Baths", (str(int(listing.baths) if listing.baths == int(listing.baths) else listing.baths)) if listing.baths is not None else "—"),
         ("Sqft", f"{listing.sqft:,}" if listing.sqft else "—"),
         ("$/sqft", f"${listing.price_per_sqft:,}" if listing.price_per_sqft else "—"),
         ("Neighborhood", listing.neighborhood or "—"),
