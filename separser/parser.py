@@ -1,6 +1,5 @@
 import re
 from datetime import datetime, timezone
-from typing import Literal
 
 from bs4 import BeautifulSoup, Tag
 
@@ -26,27 +25,23 @@ def _float_beds(text: str | None) -> float | None:
     return float(m.group()) if m else None
 
 
-def _cls(soup: BeautifulSoup, prefix: str) -> Tag | None:
-    """Find first element whose class list contains a class starting with prefix."""
+def _cls(soup, prefix: str) -> Tag | None:
     return soup.find(class_=re.compile(r"^" + re.escape(prefix)))
 
 
-def _cls_all(soup: BeautifulSoup, prefix: str) -> list[Tag]:
+def _cls_all(soup, prefix: str) -> list[Tag]:
     return soup.find_all(class_=re.compile(r"^" + re.escape(prefix)))
 
 
-# --- type detection ---
+# --- field extractors ---
 
-def detect_listing_type(html: str, url: str) -> Literal["sale", "new_dev"]:
+def _extract_listing_type(url: str) -> str:
     if "/new-development/" in url:
         return "new_dev"
-    soup = BeautifulSoup(html, "html.parser")
-    if soup.find(attrs={"data-testid": "new-development-detail"}):
-        return "new_dev"
+    if "/for-rent/" in url or "/rental/" in url:
+        return "rental"
     return "sale"
 
-
-# --- field extractors ---
 
 def _extract_price(soup: BeautifulSoup) -> int | None:
     el = _cls(soup, "PriceInfo_price__")
@@ -54,14 +49,12 @@ def _extract_price(soup: BeautifulSoup) -> int | None:
 
 
 def _extract_property_details(soup: BeautifulSoup) -> dict:
-    """Parse the PropertyDetails block: sqft, price_per_sqft, beds, baths."""
     beds: float | None = None
     baths: float | None = None
     sqft: int | None = None
     price_per_sqft: int | None = None
 
-    items = _cls_all(soup, "PropertyDetails_item__")
-    for item in items:
+    for item in _cls_all(soup, "PropertyDetails_item__"):
         txt = item.get_text(strip=True)
         if re.search(r"per\s*ft", txt, re.I):
             price_per_sqft = _int(txt)
@@ -76,13 +69,11 @@ def _extract_property_details(soup: BeautifulSoup) -> dict:
 
 
 def _extract_address(soup: BeautifulSoup) -> str:
-    # H1 is most reliable for the full address line
     h1 = soup.find("h1")
     return h1.get_text(strip=True) if h1 else ""
 
 
 def _extract_location(soup: BeautifulSoup) -> tuple[str | None, str | None]:
-    """Return (neighborhood, borough) from breadcrumb."""
     BOROUGHS = {"Manhattan", "Brooklyn", "Queens", "Bronx", "Staten Island"}
     breadcrumb = soup.find(attrs={"data-testid": "breadcrumbs"}) or soup.find(
         class_=re.compile(r"breadcrumb", re.I)
@@ -90,8 +81,7 @@ def _extract_location(soup: BeautifulSoup) -> tuple[str | None, str | None]:
     neighborhood: str | None = None
     borough: str | None = None
     if breadcrumb:
-        crumbs = [a.get_text(strip=True) for a in breadcrumb.find_all("a")]
-        for crumb in crumbs:
+        for crumb in [a.get_text(strip=True) for a in breadcrumb.find_all("a")]:
             if crumb in BOROUGHS:
                 borough = crumb
             elif borough and not neighborhood:
@@ -108,20 +98,13 @@ def _extract_dom(soup: BeautifulSoup) -> int | None:
 
 
 def _extract_agent(soup: BeautifulSoup) -> tuple[str | None, str | None]:
-    """Return (listing_agent, listing_brokerage)."""
-    agent: str | None = None
-    brokerage: str | None = None
-
-    # Agent name: first AgentCard title
     agent_el = _cls(soup, "AgentCard_title__")
-    if agent_el:
-        agent = agent_el.get_text(strip=True) or None
+    agent = agent_el.get_text(strip=True) or None if agent_el else None
 
-    # Brokerage: data-testid="listing-by" → "Listing by Corcoran, ..."
+    brokerage: str | None = None
     listing_by = soup.find(attrs={"data-testid": "listing-by"})
     if listing_by:
-        txt = listing_by.get_text(strip=True)
-        m = re.match(r"Listing by\s+([^,]+)", txt, re.I)
+        m = re.match(r"Listing by\s+([^,]+)", listing_by.get_text(strip=True), re.I)
         if m:
             brokerage = m.group(1).strip()
 
@@ -129,50 +112,34 @@ def _extract_agent(soup: BeautifulSoup) -> tuple[str | None, str | None]:
 
 
 def _extract_costs(soup: BeautifulSoup) -> dict:
-    """Extract common_charges, taxes, tax_abatement from the costs section."""
     common_charges: int | None = None
     taxes: int | None = None
     tax_abatement: str | None = None
 
-    items = _cls_all(soup, "SaleListingSpecSection_costsSpecItem__")
-    for item in items:
+    for item in _cls_all(soup, "SaleListingSpecSection_costsSpecItem__"):
         title_el = _cls(item, "SaleListingSpec_title__")
         if not title_el:
             continue
         label = title_el.get_text(strip=True).lower()
-        # value is the full item text minus the label
-        full = item.get_text(strip=True)
-        value = full[len(title_el.get_text(strip=True)):].strip()
+        value = item.get_text(strip=True)[len(title_el.get_text(strip=True)):].strip()
 
         if "common charge" in label:
             common_charges = _int(value)
         elif label == "taxes":
             taxes = _int(value)
         elif "abatement" in label:
-            # strip trailing month/dollar noise, keep descriptive text
             tax_abatement = re.sub(r"\s*\$[\d,]+/mo.*$", "", value).strip() or None
 
     return {"common_charges": common_charges, "taxes": taxes, "tax_abatement": tax_abatement}
 
 
 def _extract_open_houses(soup: BeautifulSoup) -> list[str]:
-    """Extract clean open house date strings."""
-    slots = _cls_all(soup, "OpenHouseCard_openHouseSlotDate__")
     results = []
-    for slot in slots:
-        # slot contains: date el + time el + optional appointment badge
+    for slot in _cls_all(soup, "OpenHouseCard_openHouseSlotDate__"):
         date_el = slot.find(class_=re.compile(r"SecondarySmall_|Heading_"))
         time_el = slot.find(class_=re.compile(r"Body_base_"))
         appt_el = slot.find(class_=re.compile(r"OpenHouseCard_appointmentBadge__"))
-
-        parts = []
-        if date_el:
-            parts.append(date_el.get_text(strip=True))
-        if time_el:
-            parts.append(time_el.get_text(strip=True))
-        if appt_el:
-            parts.append(appt_el.get_text(strip=True))
-
+        parts = [el.get_text(strip=True) for el in [date_el, time_el, appt_el] if el]
         entry = " ".join(parts).strip()
         if entry:
             results.append(entry)
@@ -189,14 +156,15 @@ def _extract_description(soup: BeautifulSoup) -> str | None:
     return None
 
 
-# --- main parsers ---
+# --- public API ---
 
-def _build(soup: BeautifulSoup, url: str, listing_type: Literal["sale", "new_dev"]) -> ListingData:
-    neighborhood, borough = _extract_location(soup)
+def parse(html: str, url: str) -> ListingData:
+    soup = BeautifulSoup(html, "html.parser")
     details = _extract_property_details(soup)
     costs = _extract_costs(soup)
     price = _extract_price(soup)
     agent, brokerage = _extract_agent(soup)
+    neighborhood, borough = _extract_location(soup)
 
     if details["price_per_sqft"] is None and price and details["sqft"]:
         details["price_per_sqft"] = price // details["sqft"]
@@ -206,7 +174,7 @@ def _build(soup: BeautifulSoup, url: str, listing_type: Literal["sale", "new_dev
         address=_extract_address(soup),
         neighborhood=neighborhood,
         borough=borough,
-        listing_type=listing_type,
+        listing_type=_extract_listing_type(url),
         price=price,
         beds=details["beds"],
         baths=details["baths"],
@@ -222,18 +190,3 @@ def _build(soup: BeautifulSoup, url: str, listing_type: Literal["sale", "new_dev
         description=_extract_description(soup),
         scraped_at=datetime.now(timezone.utc),
     )
-
-
-def parse_sale(html: str, url: str) -> ListingData:
-    return _build(BeautifulSoup(html, "html.parser"), url, "sale")
-
-
-def parse_new_dev(html: str, url: str) -> ListingData:
-    return _build(BeautifulSoup(html, "html.parser"), url, "new_dev")
-
-
-def parse(html: str, url: str) -> ListingData:
-    listing_type = detect_listing_type(html, url)
-    if listing_type == "new_dev":
-        return parse_new_dev(html, url)
-    return parse_sale(html, url)
