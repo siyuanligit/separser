@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# Build / dist
+dist/
+build/
+*.egg-info/
+.eggs/
+
+# uv cache
+.uv/
+
+# Pytest / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Playwright
+playwright-report/
+test-results/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude Code local settings (machine-specific permissions)
+.claude/settings.local.json
+
+# Secrets / env
+.env
+*.env
+
+# Fixtures are real HTML snapshots — tracked intentionally
+# but exclude any accidental full-page saves with resources
+tests/fixtures/*.files/
