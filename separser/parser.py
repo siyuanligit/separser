@@ -128,6 +128,33 @@ def _extract_agent(soup: BeautifulSoup) -> tuple[str | None, str | None]:
     return agent, brokerage
 
 
+def _extract_costs(soup: BeautifulSoup) -> dict:
+    """Extract common_charges, taxes, tax_abatement from the costs section."""
+    common_charges: int | None = None
+    taxes: int | None = None
+    tax_abatement: str | None = None
+
+    items = _cls_all(soup, "SaleListingSpecSection_costsSpecItem__")
+    for item in items:
+        title_el = _cls(item, "SaleListingSpec_title__")
+        if not title_el:
+            continue
+        label = title_el.get_text(strip=True).lower()
+        # value is the full item text minus the label
+        full = item.get_text(strip=True)
+        value = full[len(title_el.get_text(strip=True)):].strip()
+
+        if "common charge" in label:
+            common_charges = _int(value)
+        elif label == "taxes":
+            taxes = _int(value)
+        elif "abatement" in label:
+            # strip trailing month/dollar noise, keep descriptive text
+            tax_abatement = re.sub(r"\s*\$[\d,]+/mo.*$", "", value).strip() or None
+
+    return {"common_charges": common_charges, "taxes": taxes, "tax_abatement": tax_abatement}
+
+
 def _extract_open_houses(soup: BeautifulSoup) -> list[str]:
     """Extract clean open house date strings."""
     slots = _cls_all(soup, "OpenHouseCard_openHouseSlotDate__")
@@ -167,10 +194,10 @@ def _extract_description(soup: BeautifulSoup) -> str | None:
 def _build(soup: BeautifulSoup, url: str, listing_type: Literal["sale", "new_dev"]) -> ListingData:
     neighborhood, borough = _extract_location(soup)
     details = _extract_property_details(soup)
+    costs = _extract_costs(soup)
     price = _extract_price(soup)
     agent, brokerage = _extract_agent(soup)
 
-    # Compute price_per_sqft from extracted price if not already in the details block
     if details["price_per_sqft"] is None and price and details["sqft"]:
         details["price_per_sqft"] = price // details["sqft"]
 
@@ -188,6 +215,9 @@ def _build(soup: BeautifulSoup, url: str, listing_type: Literal["sale", "new_dev
         days_on_market=_extract_dom(soup),
         listing_agent=agent,
         listing_brokerage=brokerage,
+        common_charges=costs["common_charges"],
+        taxes=costs["taxes"],
+        tax_abatement=costs["tax_abatement"],
         open_house_dates=_extract_open_houses(soup),
         description=_extract_description(soup),
         scraped_at=datetime.now(timezone.utc),

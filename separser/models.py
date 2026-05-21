@@ -18,6 +18,9 @@ class ListingData(BaseModel):
     days_on_market: int | None
     listing_agent: str | None
     listing_brokerage: str | None
+    common_charges: int | None
+    taxes: int | None
+    tax_abatement: str | None
     open_house_dates: list[str]
     description: str | None
     scraped_at: datetime
